@@ -10,6 +10,8 @@ from scipy.spatial import ConvexHull
 from solid import *
 from solid.utils import *
 import argparse
+from shapely.geometry import Polygon, LineString
+from scipy import ndimage
 
 parser = argparse.ArgumentParser()
 parser.add_argument("inputFile", type=str,
@@ -20,6 +22,7 @@ parser.add_argument("--show_convex_hull", help="displays the convex hull of tumo
 args = parser.parse_args()
 
 tumorVolumeNameInMat = 'threshold_smooth_box' # Design mechanism to select which matrix via prompt
+tumorPointsNameInMat = 'labels_smooth_box' # Design mechanism to select which matrix via prompt
 inputFilePath = args.inputFile
 outputFilePath = args.outputFile
 
@@ -28,12 +31,22 @@ gapBetweenSlabs = 1.5 # Adapt to blade thickness
 sectionPlaneDistances = 10 # Default in our case
 sizeInXDirection = 210 # Printer limitation
 sizeInYDirection = 210 # Printer limitation
+sizeinZDirection = 250 # Printer limitation
 basePlateThickness = 4 #
 slabHeight = 60 # this
+contactHoleSize = 10 # size of holes in print
 
-tumor= sio.loadmat(inputFilePath)
-tree = tumor[tumorVolumeNameInMat]
+sectionDirection = 0 # 0 = Along X?, 1 = Along Y?
+tumorRotation = False # Not implemented, assume correct prior orientation
+
+contactPointIndices = [7,8] # DODGY, REPLACE!!!
+
+tumorVolume= sio.loadmat(inputFilePath)
+tree = tumorVolume[tumorVolumeNameInMat]
 tree = (tree==1)
+
+tumorPoints= sio.loadmat(inputFilePath)
+treePoints = tumorPoints[tumorPointsNameInMat]
 
 print("#######################################\n####### COOKIE CUTTER GENERATOR #######\n#######################################")
 print("### Input file: "+inputFilePath)
@@ -86,22 +99,59 @@ if args.show_convex_hull:
     plt.plot(testArray[tumorHull.vertices,0], testArray[tumorHull.vertices,1], 'r--', lw=2)
     plt.plot(testArray[tumorHull .vertices[0],0], testArray[tumorHull .vertices[0],1], 'ro')
     plt.show()
+
+
+convexHullArray = np.array([[testArray[a,0], testArray[a,1]] for a in tumorHull.vertices])
+
+convexHullPolygon =  Polygon([[testArray[a,0], testArray[a,1]] for a in tumorHull.vertices])
+mbr_points = list(zip(*convexHullPolygon.minimum_rotated_rectangle.exterior.coords.xy))
+mbr_lengths = [LineString((mbr_points[i], mbr_points[i+1])).length for i in range(len(mbr_points) - 1)]
+minor_axis = min(mbr_lengths)
+major_axis = max(mbr_lengths)
+
+
+
 print("# done.")
 
 print("# Build mould structure:")
-convexHullExtrude = linear_extrude(slabHeight)(translate([10,10,0])(offset(r=5)(polygon([[testArray[a,0], testArray[a,1]] for a in tumorHull.vertices]))))
-convexHullExtrude2 = linear_extrude(slabHeight)(translate([10,10,0])(offset(r=10)(polygon([[testArray[a,0], testArray[a,1]] for a in tumorHull.vertices]))))
+convexHullExtrude = linear_extrude(slabHeight)(translate([0,0,0])(offset(r=5)(polygon([[testArray[a,0], testArray[a,1]] for a in tumorHull.vertices]))))
+convexHullExtrude2 = linear_extrude(slabHeight)(translate([0,0,0])(offset(r=10)(polygon([[testArray[a,0], testArray[a,1]] for a in tumorHull.vertices]))))
 tmpSlabs = []
-for i in range(sizeInYDirection//sectionPlaneDistances):
-    tmpSlabs += translate( [0,i*sectionPlaneDistances,basePlateThickness])(
-    cube([sizeInXDirection,sectionPlaneDistances-(gapBetweenSlabs/2),slabHeight])
+numberOfSections = sizeInYDirection//sectionPlaneDistances if sectionDirection==1 else sizeInXDirection//sectionPlaneDistances
+for i in range(numberOfSections):
+    translateInX = i*sectionPlaneDistances if sectionDirection==0 else 0
+    translateInY = i*sectionPlaneDistances if sectionDirection==1 else 0
+    slabSize = [sizeInXDirection,sectionPlaneDistances-(gapBetweenSlabs/2),slabHeight] if sectionDirection==1 else [sectionPlaneDistances-(gapBetweenSlabs/2),sizeInYDirection,slabHeight]
+    tmpSlabs += translate( [translateInX,translateInY,basePlateThickness])(
+    cube(slabSize)
     )
 d = intersection()(cube([sizeInXDirection,sizeInYDirection,basePlateThickness]),convexHullExtrude2)
 d += intersection()(tmpSlabs,convexHullExtrude)
-d -= translate( [10,10,basePlateThickness])(import_stl("intermediate_proc.stl"))
+d -= translate( [0,0,basePlateThickness])(import_stl("intermediate_proc.stl"))
+
+# Create contact point holes
+contactHoles = [[50,40],[90,100]]
+for contactHole in contactPointIndices:
+    centerOfMassCH = ndimage.measurements.center_of_mass(treePoints==contactHole)
+    d = difference()(d,translate([centerOfMassCH[0],centerOfMassCH[1],0])(cylinder(h=sizeinZDirection,r=contactHoleSize)))
+
+# Build a baseplate
+# Determind minimum and maximum extend in alldirections
+print(convexHullArray.shape)
+minX = np.min(convexHullArray[:,0])
+maxX = np.max(convexHullArray[:,0])
+minY = np.min(convexHullArray[:,1])
+maxY = np.max(convexHullArray[:,1])
+print(minX,maxX,minY,maxY)
+#print(sizeInXDirection/2-(maxX-minX)/2)
+d = translate([sizeInYDirection/2-(maxY-minY)/2,sizeInXDirection/2-(maxX-minX)/2,0])(d)
+#d += translate([0,0,0])(cube([200,30,basePlateThickness]))
+
 
 scad_render_to_file(d,'test.scad')
 print("# done.")
+
+quit()
 
 print("# Final conversion to .stl file:")
 # Add input mesh
@@ -118,8 +168,11 @@ output = subprocess.check_output(command, shell=True)
 print("Done:")
 print (in_file + " > " + out_file)
 #volume = ConvexHull(tree).volume
+print("# Projected tumor size (max): \n## Major axis:"+str(major_axis)+" \n## Minor axis:"+str(minor_axis))
 print("# done. Happy 3D printing!")
 # tidy up
 os.remove("test.scad")
 os.remove("intermediate.stl")
 os.remove("intermediate_proc.stl")
+
+output = subprocess.check_output("/home/gehrun01/Applications/Slic3rPE-1.41.3/Slic3rPE-1.41.3+linux64-full-201902121303.AppImage "+outputFilePath, shell=True)
