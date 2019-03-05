@@ -12,19 +12,35 @@ from solid.utils import *
 import argparse
 from shapely.geometry import Polygon, LineString
 from scipy import ndimage
+from ftplib import FTP
+
+def ftp_upload(ftp_obj, path, ftype='TXT'):
+    """
+    A function for uploading files to an FTP server
+    @param ftp_obj: The file transfer protocol object
+    @param path: The path to the file to upload
+    """
+    if ftype == 'TXT' or ftype == 'STL':
+        with open(path,'rb') as fobj:
+            ftp.storlines('STOR ' + path, fobj)
+    else:
+        with open(path, 'rb') as fobj:
+            ftp.storbinary('STOR ' + path, fobj, 1024)
+
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("inputFile", type=str,
                     help="name of .mat input file containing 3D volume matrix")
-parser.add_argument("outputFile", type=str,
-                    help="name of .stl file which will contain final mould")
+#parser.add_argument("outputFile", type=str,
+#                    help="name of .stl file which will contain final mould")
 parser.add_argument("--show_convex_hull", help="displays the convex hull of tumor 2D projection")
 args = parser.parse_args()
 
 tumorVolumeNameInMat = 'threshold_smooth_box' # Design mechanism to select which matrix via prompt
 tumorPointsNameInMat = 'labels_smooth_box' # Design mechanism to select which matrix via prompt
 inputFilePath = args.inputFile
-outputFilePath = args.outputFile
+outputFilePath = "Patient"
 
 # All units are given in millimeter
 gapBetweenSlabs = 1.5 # Adapt to blade thickness
@@ -36,10 +52,15 @@ basePlateThickness = 4 #
 slabHeight = 60 # this
 contactHoleSize = 10 # size of holes in print
 
-sectionDirection = 0 # 0 = Along X?, 1 = Along Y?
+sectionDirection = 1 # 0 = Along X?, 1 = Along Y?
 tumorRotation = False # Not implemented, assume correct prior orientation
 
+kidneyPointIndex = [2]
+tumorPointIndex = [3]
+vesselPointIndices = [6] # DODGY, REPLACE!!!
 contactPointIndices = [7,8] # DODGY, REPLACE!!!
+pointLabels = ['V','CK','CT']
+
 
 tumorVolume= sio.loadmat(inputFilePath)
 tree = tumorVolume[tumorVolumeNameInMat]
@@ -48,7 +69,7 @@ tree = (tree==1)
 tumorPoints= sio.loadmat(inputFilePath)
 treePoints = tumorPoints[tumorPointsNameInMat]
 
-print("#######################################\n####### COOKIE CUTTER GENERATOR #######\n#######################################")
+print("#######################################\n####### TISSUE CUTTER GENERATOR #######\n#######################################")
 print("### Input file: "+inputFilePath)
 print("##### Matrix name: "+tumorVolumeNameInMat)
 print("### Output file: "+outputFilePath)
@@ -129,11 +150,22 @@ d = intersection()(cube([sizeInXDirection,sizeInYDirection,basePlateThickness]),
 d += intersection()(tmpSlabs,convexHullExtrude)
 d -= translate( [0,0,basePlateThickness])(import_stl("intermediate_proc.stl"))
 
-# Create contact point holes
-contactHoles = [[50,40],[90,100]]
-for contactHole in contactPointIndices:
+# Create vessel and contact point holes
+for pointIdx,contactHole in enumerate(vesselPointIndices+contactPointIndices):
     centerOfMassCH = ndimage.measurements.center_of_mass(treePoints==contactHole)
     d = difference()(d,translate([centerOfMassCH[0],centerOfMassCH[1],0])(cylinder(h=sizeinZDirection,r=contactHoleSize)))
+    d = difference()(d,translate([centerOfMassCH[0]+1.2*contactHoleSize,centerOfMassCH[1]+1.2*contactHoleSize,0])(mirror([1,0,0])(linear_extrude(1)(text(pointLabels[pointIdx], font = "Liberation Sans",size=5)))))
+
+
+# Create tumor color part
+centerOfMassTumor = ndimage.measurements.center_of_mass(treePoints==tumorPointIndex)
+centerOfMassKidney = ndimage.measurements.center_of_mass(treePoints==kidneyPointIndex)
+
+d_kidney = intersection()(translate([centerOfMassKidney[0],centerOfMassKidney[1],basePlateThickness-1])(cylinder(h=sizeinZDirection,r=contactHoleSize*1.5)),d)
+d = difference()(d,translate([centerOfMassKidney[0],centerOfMassKidney[1],basePlateThickness-1])(cylinder(h=sizeinZDirection,r=contactHoleSize*1.5)))
+d_tumour = intersection()(translate([centerOfMassTumor[0],centerOfMassTumor[1],basePlateThickness-1])(cylinder(h=sizeinZDirection,r=contactHoleSize*1.5)),d)
+d = difference()(d,translate([centerOfMassTumor[0],centerOfMassTumor[1],basePlateThickness-1])(cylinder(h=sizeinZDirection,r=contactHoleSize*1.5)))
+
 
 # Build a baseplate
 # Determind minimum and maximum extend in alldirections
@@ -144,35 +176,49 @@ minY = np.min(convexHullArray[:,1])
 maxY = np.max(convexHullArray[:,1])
 print(minX,maxX,minY,maxY)
 #print(sizeInXDirection/2-(maxX-minX)/2)
-d = translate([sizeInYDirection/2-(maxY-minY)/2,sizeInXDirection/2-(maxX-minX)/2,0])(d)
+#d = translate([sizeInYDirection/2-(maxY-minY)/2,sizeInXDirection/2-(maxX-minX)/2,0])(d)
 #d += translate([0,0,0])(cube([200,30,basePlateThickness]))
 
 
 scad_render_to_file(d,'test.scad')
+scad_render_to_file(d_tumour,'test_tumour.scad')
+scad_render_to_file(d_kidney,'test_kidney.scad')
 print("# done.")
 
-quit()
+#quit()
+filesToConvert = ['test.scad','test_tumour.scad','test_kidney.scad']
+targetFileNames = [outputFilePath,outputFilePath+"_tumour",outputFilePath+"_kidney"]
+for fileIdx,fileToConvert in enumerate(filesToConvert):
+    print("# Final conversion to .stl file:")
+    # Add input mesh
+    in_file = fileToConvert
+    out_file = targetFileNames[fileIdx]+".stl"
+    command = "openscad " + in_file+""
+    # Add the output filename and output flags
+    command += " -o " + out_file
+    # Execute command
 
-print("# Final conversion to .stl file:")
-# Add input mesh
-in_file = "test.scad"
-out_file = outputFilePath
-command = "openscad " + in_file+""
-# Add the output filename and output flags
-command += " -o " + out_file
-# Execute command
-
-print(command)
-print ("Going to execute: " + command)
-output = subprocess.check_output(command, shell=True)
-print("Done:")
-print (in_file + " > " + out_file)
+    print(command)
+    print ("Going to execute: " + command)
+    output = subprocess.check_output(command, shell=True)
+    print("Done:")
+    print (in_file + " > " + out_file)
+    os.remove(fileToConvert)
 #volume = ConvexHull(tree).volume
 print("# Projected tumor size (max): \n## Major axis:"+str(major_axis)+" \n## Minor axis:"+str(minor_axis))
+
+print("# Upload to kidney.cyted.io")
+ftp = FTP('cyted.io')
+print ("Welcome: ", ftp.getwelcome())
+ftp.login("kidney@cyted.io","puffintheprinter")
+ftp_upload(ftp, "Patient.stl")
+ftp_upload(ftp, "Patient_tumour.stl")
+ftp_upload(ftp, "Patient_kidney.stl")
+ftp.quit()
+
 print("# done. Happy 3D printing!")
 # tidy up
-os.remove("test.scad")
 os.remove("intermediate.stl")
 os.remove("intermediate_proc.stl")
 
-output = subprocess.check_output("/home/gehrun01/Applications/Slic3rPE-1.41.3/Slic3rPE-1.41.3+linux64-full-201902121303.AppImage "+outputFilePath, shell=True)
+output = subprocess.check_output("/home/gehrun01/Applications/Slic3rPE-1.41.3/Slic3rPE-1.41.3+linux64-full-201902121303.AppImage "+outputFilePath+".stl "+outputFilePath+"_tumour.stl "+outputFilePath+"_kidney.stl", shell=True)
