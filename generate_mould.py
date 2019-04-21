@@ -12,22 +12,6 @@ from solid.utils import *
 import argparse
 from shapely.geometry import Polygon, LineString
 from scipy import ndimage
-from ftplib import FTP
-
-def ftp_upload(ftp_obj, path, ftype='TXT'):
-    """
-    A function for uploading files to an FTP server
-    @param ftp_obj: The file transfer protocol object
-    @param path: The path to the file to upload
-    """
-    if ftype == 'TXT' or ftype == 'STL':
-        with open(path,'rb') as fobj:
-            ftp.storlines('STOR ' + path, fobj)
-    else:
-        with open(path, 'rb') as fobj:
-            ftp.storbinary('STOR ' + path, fobj, 1024)
-
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument("inputFile", type=str,
@@ -88,7 +72,7 @@ print("# done.")
 print("# MeshLab messsages:")
 in_file = 'intermediate.stl'
 out_file = 'intermediate_proc.stl'
-filter_script_path = 'new_smooth.mlx'
+filter_script_path = 'filter.mlx'
  # Add input mesh
 command = "meshlabserver -i '"+os.getcwd()+"/" + in_file+"'"
 # Add the filter script
@@ -206,19 +190,7 @@ for fileIdx,fileToConvert in enumerate(filesToConvert):
     os.remove(fileToConvert)
 #volume = ConvexHull(tree).volume
 print("# Projected tumor size (max): \n## Major axis:"+str(major_axis)+" \n## Minor axis:"+str(minor_axis))
-
-print("# Upload to kidney.cyted.io")
-ftp = FTP('cyted.io')
-print ("Welcome: ", ftp.getwelcome())
-ftp.login("kidney@cyted.io","puffintheprinter")
-ftp_upload(ftp, "Patient.stl")
-ftp_upload(ftp, "Patient_tumour.stl")
-ftp_upload(ftp, "Patient_kidney.stl")
-ftp.quit()
-
 print("# done. Happy 3D printing!")
 # tidy up
 os.remove("intermediate.stl")
 os.remove("intermediate_proc.stl")
-
-output = subprocess.check_output("/home/gehrun01/Applications/Slic3rPE-1.41.3/Slic3rPE-1.41.3+linux64-full-201902121303.AppImage "+outputFilePath+".stl "+outputFilePath+"_tumour.stl "+outputFilePath+"_kidney.stl", shell=True)
