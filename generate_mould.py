@@ -115,6 +115,9 @@ kidneyPointIndex = 2
 tumorPointIndex = 3
 vesselPointIndices = [6]  # DODGY, REPLACE!!!
 contactPointIndices = [7, 8]  # DODGY, REPLACE!!! Sometimes with 8
+
+#vesselPointIndices = []  # DODGY, REPLACE!!!
+#contactPointIndices = []  # DODGY, REPLACE!!! Sometimes with 8
 pointLabels = ['V', 'CK', 'CT']
 
 # Specify printer limitations (i.e. Prusa MK3S)
@@ -233,7 +236,7 @@ d = intersection()(cube(
     [sizeInXDirection, sizeInYDirection, basePlateThickness]), convexHullExtrude2)
 d += intersection()(tmpSlabs, convexHullExtrude)
 d -= translate([0, 0, basePlateThickness]
-               )(import_stl(outputFilePath + "tumour_postproc.stl"))
+               )(hull()(import_stl(outputFilePath + "tumour_postproc.stl")))
 
 
 

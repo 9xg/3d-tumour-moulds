@@ -3,6 +3,9 @@
  <filter name="Merge Close Vertices">
   <Param type="RichAbsPerc" value="0" min="0" name="Threshold" max="1.64729"/>
  </filter>
+ <filter name="Merge Close Vertices">
+  <Param type="RichAbsPerc" value="0.0080652" min="0" name="Threshold" max="0.806518"/>
+ </filter>
  <filter name="Remove Duplicate Faces"/>
  <filter name="Remove Duplicated Vertex"/>
  <filter name="Remove Faces from Non Manifold Edges"/>
