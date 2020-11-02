@@ -32,6 +32,7 @@ parser.add_argument("--tumourPoints", type=str, default="labels_smooth_box",
 parser.add_argument('--gapBetweenSlabs', type=float, default=1.5)
 parser.add_argument('--sectionPlaneDistances', type=float, default=10)
 parser.add_argument('--slabHeight', type=float, default=47)
+parser.add_argument("--noInlays", action="store_true")
 parser.add_argument('--basePlateThickness', type=float, default=4)
 parser.add_argument('--printer', type=str, default='prusa-mk3s')
 # parser.add_argument("show_convex_hull",
@@ -59,7 +60,7 @@ def convert_scad_to_stl(scadFileName, stlFileName):
     in_file = scadFileName + ".scad"
     out_file = stlFileName + ".stl"
     # Add the output filename and output flags
-    command = "openscad " + in_file + " -o " + out_file
+    command = "/Applications/OpenSCAD.app/Contents/MacOS/OpenSCAD " + in_file + " -o " + out_file
 
     # Execute command
     #print("Going to execute: " + command)
@@ -114,7 +115,7 @@ tumourVolumeIndex = 1
 kidneyPointIndex = 2
 tumorPointIndex = 3
 vesselPointIndices = [6]  # DODGY, REPLACE!!!
-contactPointIndices = [7, 8]  # DODGY, REPLACE!!! Sometimes with 8
+contactPointIndices = [7,8]  # DODGY, REPLACE!!! Sometimes with 8
 
 #vesselPointIndices = []  # DODGY, REPLACE!!!
 #contactPointIndices = []  # DODGY, REPLACE!!! Sometimes with 8
@@ -166,11 +167,11 @@ in_file = outputFilePath + "tumour_preproc.stl"
 out_file = outputFilePath + "tumour_postproc.stl"
 filter_script_path = 'filter.mlx'
 # Add input mesh
-command = "meshlabserver -i '" + os.getcwd() + "/" + in_file + "'"
+command = "/Applications/meshlab.app/Contents/MacOS/meshlabserver -i '" + os.getcwd() + "/" + in_file + "'"
 # Add the filter script
 command += " -s '" + os.getcwd() + "/" + filter_script_path + "'"
 # Add the output filename and output flags
-command += " -o '" + os.getcwd() + "/" + out_file + "' -om vn fn"
+command += " -o '" + os.getcwd() + "/" + out_file + "' -m vn fn"
 # Execute command
 
 #print ("Going to execute: " + command)
@@ -258,11 +259,13 @@ centerOfMassKidney = ndimage.measurements.center_of_mass(
 
 d_kidney = intersection()(translate([centerOfMassKidney[0], centerOfMassKidney[1],
                                      basePlateThickness - 1])(cylinder(h=sizeinZDirection, r=contactHoleSize * 1.5)), d)
-d = difference()(d, translate([centerOfMassKidney[0], centerOfMassKidney[1],
+if not args.noInlays:
+    d = difference()(d, translate([centerOfMassKidney[0], centerOfMassKidney[1],
                                basePlateThickness - 1])(cylinder(h=sizeinZDirection, r=contactHoleSize * 1.5)))
 d_tumour = intersection()(translate([centerOfMassTumor[0], centerOfMassTumor[1],
                                      basePlateThickness - 1])(cylinder(h=sizeinZDirection, r=contactHoleSize * 1.5)), d)
-d = difference()(d, translate([centerOfMassTumor[0], centerOfMassTumor[1],
+if not args.noInlays:
+    d = difference()(d, translate([centerOfMassTumor[0], centerOfMassTumor[1],
                                basePlateThickness - 1])(cylinder(h=sizeinZDirection, r=contactHoleSize * 1.5)))
 
 
@@ -340,13 +343,13 @@ print("# done.")
 print("# Done. Happy 3D printing!")
 
 # print("# Upload to kidney.cyted.io")
-ftp = FTP('cyted.io')
-print("Welcome: ", ftp.getwelcome())
-ftp.login("kidney@cyted.io", "puffintheprinter")
-ftp_upload(ftp, "Patient.stl", ftype="STL")
-ftp_upload(ftp, "Patient_tumour.stl", ftype="STL")
-ftp_upload(ftp, "Patient_kidney.stl", ftype="STL")
-ftp_upload(ftp, "Patient_guide.stl", ftype="STL")
-ftp.quit()
+#ftp = FTP('cyted.io')
+#print("Welcome: ", ftp.getwelcome())
+#ftp.login("kidney@cyted.io", "puffintheprinter")
+#ftp_upload(ftp, "Patient.stl", ftype="STL")
+#ftp_upload(ftp, "Patient_tumour.stl", ftype="STL")
+#ftp_upload(ftp, "Patient_kidney.stl", ftype="STL")
+#ftp_upload(ftp, "Patient_guide.stl", ftype="STL")
+#ftp.quit()
 
 #output = subprocess.check_output("/home/gehrun01/Applications/Slic3rPE-1.41.3/Slic3rPE-1.41.3+linux64-full-201902121303.AppImage "+outputFilePath+".stl "+outputFilePath+"_tumour.stl "+outputFilePath+"_kidney.stl", shell=True)
