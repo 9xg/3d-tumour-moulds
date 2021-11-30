@@ -342,10 +342,10 @@ print("# done.")
 #volume = ConvexHull(tree).volume
 print("# Done. Happy 3D printing!")
 
-# print("# Upload to kidney.cyted.io")
-#ftp = FTP('cyted.io')
+# print("# Upload to server")
+#ftp = FTP('server.io')
 #print("Welcome: ", ftp.getwelcome())
-#ftp.login("kidney@cyted.io", "puffintheprinter")
+#ftp.login("user", "password")
 #ftp_upload(ftp, "Patient.stl", ftype="STL")
 #ftp_upload(ftp, "Patient_tumour.stl", ftype="STL")
 #ftp_upload(ftp, "Patient_kidney.stl", ftype="STL")
